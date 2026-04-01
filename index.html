@@ -1,0 +1,759 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="BA II Plus">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="manifest" href="/manifest.json">
+<title>BA II Plus</title>
+<style>
+@import url('https://fonts.cdnfonts.com/css/digital-7-mono');
+* { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body {
+  width: 100%; height: 100%;
+  overflow: hidden;
+  background: #808080;
+  touch-action: manipulation;
+  -webkit-user-select: none; user-select: none;
+}
+
+#app {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+  max-width: 586px;
+  margin: 0 auto;
+  overflow: hidden;
+}
+
+#bg {
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+  z-index: 0;
+}
+
+/* Calculator display overlay — sits on the green screen area */
+#display {
+  position: absolute;
+  z-index: 2;
+  top: 4.25%;
+  left: 6.8%;
+  width: 86.4%;
+  height: 10.4%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  font-family: 'Digital-7 Mono', 'Digital-7', monospace;
+  font-size: clamp(96px, 24vw, 156px);
+  font-weight: 400;
+  letter-spacing: 0.02em;
+  color: #1b1f15;
+  text-shadow: 0 0 1px rgba(27,31,21,0.18);
+  background: transparent;
+  pointer-events: none;
+  line-height: 1;
+}
+
+/* Status pixel — 1px blue dot in top-left of display when AI mode active */
+#status-pixel {
+  position: absolute;
+  z-index: 3;
+  top: 7.2%;
+  left: 8.6%;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: transparent;
+  pointer-events: none;
+  transition: background 0.15s;
+}
+#status-pixel.ai-active { background: #3366ff; }
+#status-pixel.ai-error  { background: #ff3333; }
+
+/* Button overlay grid — transparent tap targets */
+.btn-row {
+  position: absolute;
+  z-index: 1;
+  left: 0;
+  width: 100%;
+  display: flex;
+}
+
+.btn {
+  background: transparent;
+  border: none;
+  outline: none;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.btn:active {
+  background: rgba(255,255,255,0.08);
+}
+
+/* AI Chat overlay — hidden by default */
+#ai-overlay {
+  position: absolute;
+  z-index: 10;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.92);
+  display: none;
+  flex-direction: column;
+  padding: env(safe-area-inset-top, 20px) 16px env(safe-area-inset-bottom, 16px);
+}
+#ai-overlay.visible {
+  display: flex;
+}
+
+#ai-messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px 0;
+  font-family: -apple-system, system-ui, sans-serif;
+  font-size: 15px;
+  color: #e0e0e0;
+  line-height: 1.5;
+}
+
+.msg {
+  margin-bottom: 12px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  max-width: 85%;
+  word-wrap: break-word;
+}
+.msg.user {
+  background: #2a5298;
+  margin-left: auto;
+  border-bottom-right-radius: 4px;
+}
+.msg.ai {
+  background: #2a2a2e;
+  margin-right: auto;
+  border-bottom-left-radius: 4px;
+}
+.msg.system {
+  background: transparent;
+  color: #888;
+  font-size: 12px;
+  text-align: center;
+  max-width: 100%;
+}
+
+#ai-input-row {
+  display: flex;
+  gap: 8px;
+  padding-top: 8px;
+}
+#ai-input {
+  flex: 1;
+  background: #1a1a1e;
+  border: 1px solid #444;
+  border-radius: 20px;
+  padding: 10px 16px;
+  color: #fff;
+  font-size: 15px;
+  outline: none;
+  font-family: -apple-system, system-ui, sans-serif;
+}
+#ai-input::placeholder { color: #666; }
+
+.ai-btn {
+  background: #2a5298;
+  border: none;
+  border-radius: 20px;
+  padding: 10px 16px;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  font-family: -apple-system, system-ui, sans-serif;
+}
+.ai-btn:active { opacity: 0.7; }
+.ai-btn.camera-btn { background: #444; padding: 10px 12px; }
+
+/* Hidden file input for camera */
+#camera-input { display: none; }
+
+/* Loading dots */
+.loading-dots::after {
+  content: '';
+  animation: dots 1.2s infinite;
+}
+@keyframes dots {
+  0%, 20% { content: '.'; }
+  40% { content: '..'; }
+  60%, 100% { content: '...'; }
+}
+</style>
+</head>
+<body>
+<div id="app">
+  <img id="bg" src="https://felix-ab.github.io/stealth-calc/ba-calculator-bg.jpg" alt="" draggable="false">
+  <div id="display">0</div>
+  <div id="status-pixel"></div>
+
+  <!-- Button grid — 10 rows × 5 cols mapped to the BA II Plus layout -->
+  <!-- Row positions (% of image height), column positions (% of image width) -->
+
+  <!-- AI Chat Overlay -->
+  <div id="ai-overlay">
+    <div id="ai-messages"></div>
+    <div id="ai-input-row">
+      <button class="ai-btn camera-btn" id="camera-btn" title="Camera">📷</button>
+      <input type="text" id="ai-input" placeholder="Ask anything..." autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+      <button class="ai-btn" id="send-btn">Send</button>
+    </div>
+    <input type="file" id="camera-input" accept="image/*" capture="environment">
+  </div>
+</div>
+
+<script>
+(function() {
+  'use strict';
+
+  // ── CONFIG ──
+  const VISION_MODEL = 'openrouter/anthropic/claude-sonnet-4.6';
+  const TEXT_MODEL = 'openrouter/anthropic/claude-sonnet-4.6';
+  const API_URL = '/api/chat';
+
+  // ── STATE ──
+  let aiMode = false;
+  let chatOverlay = false;
+  let display = '0';
+  let currentInput = '';
+  let lastOperator = null;
+  let accumulator = 0;
+  let freshResult = false;
+  let percentTapCount = 0;
+  let percentTapTimer = null;
+  let equalsTapCount = 0;
+  let equalsTapTimer = null;
+  let messages = []; // chat history for AI context
+  let isProcessing = false;
+
+  // ── DOM ──
+  const displayEl = document.getElementById('display');
+  const statusPixel = document.getElementById('status-pixel');
+  const aiOverlay = document.getElementById('ai-overlay');
+  const aiMessages = document.getElementById('ai-messages');
+  const aiInput = document.getElementById('ai-input');
+  const sendBtn = document.getElementById('send-btn');
+  const cameraBtn = document.getElementById('camera-btn');
+  const cameraInput = document.getElementById('camera-input');
+
+  // ── BUTTON MAP ──
+  // Each row: [topPct, heightPct, [{leftPct, widthPct, label, action}...]]
+  // Mapped from the 586x1280 image
+  const buttonMap = [
+    // Row 0: CPT ENTER ↑ ↓ OFF (y≈17.2%, h≈5.5%)
+    { top: 17.2, height: 5.5, buttons: [
+      { left: 1.5, width: 18, label: 'CPT' },
+      { left: 20.5, width: 18, label: 'ENTER' },
+      { left: 39.5, width: 18, label: 'UP' },
+      { left: 58.5, width: 18, label: 'DOWN' },
+      { left: 77.5, width: 21, label: 'OFF' },
+    ]},
+    // Row 1: 2ND CF NPV IRR ← (y≈24.5%)
+    { top: 24.5, height: 5.5, buttons: [
+      { left: 1.5, width: 18, label: '2ND' },
+      { left: 20.5, width: 18, label: 'CF' },
+      { left: 39.5, width: 18, label: 'NPV' },
+      { left: 58.5, width: 18, label: 'IRR' },
+      { left: 77.5, width: 21, label: 'BS' },
+    ]},
+    // Row 2: N I/Y PV PMT FV (y≈32.5%)
+    { top: 32.5, height: 5.5, buttons: [
+      { left: 1.5, width: 18, label: 'N' },
+      { left: 20.5, width: 18, label: 'IY' },
+      { left: 39.5, width: 18, label: 'PV' },
+      { left: 58.5, width: 18, label: 'PMT' },
+      { left: 77.5, width: 21, label: 'FV' },
+    ]},
+    // Row 3: % √x x² 1/x + (y≈40%)
+    { top: 40, height: 5.5, buttons: [
+      { left: 1.5, width: 18, label: '%' },
+      { left: 20.5, width: 18, label: 'SQRT' },
+      { left: 39.5, width: 18, label: 'SQR' },
+      { left: 58.5, width: 18, label: 'INV_X' },
+      { left: 77.5, width: 21, label: '+' },
+    ]},
+    // Row 4: INV ( ) y^x × (y≈48%)
+    { top: 48, height: 5.5, buttons: [
+      { left: 1.5, width: 18, label: 'INV' },
+      { left: 20.5, width: 18, label: 'LPAREN' },
+      { left: 39.5, width: 18, label: 'RPAREN' },
+      { left: 58.5, width: 18, label: 'POW' },
+      { left: 77.5, width: 21, label: 'MUL' },
+    ]},
+    // Row 5: LN 7 8 9 − (y≈56%)
+    { top: 56, height: 5.5, buttons: [
+      { left: 1.5, width: 18, label: 'LN' },
+      { left: 20.5, width: 18, label: '7' },
+      { left: 39.5, width: 18, label: '8' },
+      { left: 58.5, width: 18, label: '9' },
+      { left: 77.5, width: 21, label: '-' },
+    ]},
+    // Row 6: STO 4 5 6 + (y≈64%)
+    { top: 64, height: 5.5, buttons: [
+      { left: 1.5, width: 18, label: 'STO' },
+      { left: 20.5, width: 18, label: '4' },
+      { left: 39.5, width: 18, label: '5' },
+      { left: 58.5, width: 18, label: '6' },
+      { left: 77.5, width: 21, label: 'ADD' },
+    ]},
+    // Row 7: RCL 1 2 3 (y≈72%)
+    { top: 72, height: 5.5, buttons: [
+      { left: 1.5, width: 18, label: 'RCL' },
+      { left: 20.5, width: 18, label: '1' },
+      { left: 39.5, width: 18, label: '2' },
+      { left: 58.5, width: 18, label: '3' },
+      // = button spans rows 7-8, handled separately
+    ]},
+    // Row 8: CE|C 0 . +/- (y≈80%)
+    { top: 80, height: 5.5, buttons: [
+      { left: 1.5, width: 18, label: 'CE' },
+      { left: 20.5, width: 18, label: '0' },
+      { left: 39.5, width: 18, label: '.' },
+      { left: 58.5, width: 18, label: 'SIGN' },
+    ]},
+  ];
+
+  // Equals button spans two rows
+  const equalsBtn = { top: 72, height: 13.5, left: 77.5, width: 21, label: '=' };
+
+  // ── RENDER BUTTONS ──
+  function renderButtons() {
+    const app = document.getElementById('app');
+    buttonMap.forEach(row => {
+      row.buttons.forEach(btn => {
+        const el = document.createElement('button');
+        el.className = 'btn';
+        el.style.position = 'absolute';
+        el.style.top = row.top + '%';
+        el.style.left = btn.left + '%';
+        el.style.width = btn.width + '%';
+        el.style.height = row.height + '%';
+        el.dataset.label = btn.label;
+        el.addEventListener('click', (e) => { e.preventDefault(); handlePress(btn.label); });
+        app.appendChild(el);
+      });
+    });
+
+    // Equals button
+    const eqEl = document.createElement('button');
+    eqEl.className = 'btn';
+    eqEl.style.position = 'absolute';
+    eqEl.style.top = equalsBtn.top + '%';
+    eqEl.style.left = equalsBtn.left + '%';
+    eqEl.style.width = equalsBtn.width + '%';
+    eqEl.style.height = equalsBtn.height + '%';
+    eqEl.dataset.label = '=';
+    eqEl.addEventListener('click', (e) => { e.preventDefault(); handlePress('='); });
+    app.appendChild(eqEl);
+  }
+
+  // ── DISPLAY ──
+  function updateDisplay(val) {
+    display = String(val);
+    displayEl.textContent = display;
+  }
+
+  // ── CALCULATOR LOGIC ──
+  function handlePress(label) {
+    // Triple-tap detection for % and =
+    if (label === '%') {
+      percentTapCount++;
+      clearTimeout(percentTapTimer);
+      percentTapTimer = setTimeout(() => { percentTapCount = 0; }, 600);
+      if (percentTapCount >= 3) {
+        percentTapCount = 0;
+        toggleAiMode();
+        return;
+      }
+    }
+
+    if (label === '=' && aiMode && !chatOverlay) {
+      equalsTapCount++;
+      clearTimeout(equalsTapTimer);
+      equalsTapTimer = setTimeout(() => { equalsTapCount = 0; }, 600);
+      if (equalsTapCount >= 3) {
+        equalsTapCount = 0;
+        openCamera();
+        return;
+      }
+    }
+
+    // If chat overlay is showing, ignore calculator buttons
+    if (chatOverlay) return;
+
+    // Normal calculator behavior
+    if ('0123456789'.includes(label)) {
+      if (freshResult) { currentInput = ''; freshResult = false; }
+      if (currentInput === '0') currentInput = label;
+      else currentInput += label;
+      updateDisplay(currentInput);
+      return;
+    }
+
+    if (label === '.') {
+      if (freshResult) { currentInput = '0'; freshResult = false; }
+      if (!currentInput.includes('.')) {
+        currentInput = (currentInput || '0') + '.';
+        updateDisplay(currentInput);
+      }
+      return;
+    }
+
+    if (label === 'SIGN') {
+      if (currentInput && currentInput !== '0') {
+        if (currentInput.startsWith('-')) currentInput = currentInput.slice(1);
+        else currentInput = '-' + currentInput;
+        updateDisplay(currentInput);
+      }
+      return;
+    }
+
+    if (label === 'CE') {
+      currentInput = '';
+      accumulator = 0;
+      lastOperator = null;
+      freshResult = false;
+      updateDisplay('0');
+      return;
+    }
+
+    if (['+', '-', 'MUL', 'ADD'].includes(label)) {
+      const op = label === 'ADD' ? '+' : label === 'MUL' ? '×' : label;
+      if (currentInput) {
+        if (lastOperator) {
+          accumulator = compute(accumulator, parseFloat(currentInput), lastOperator);
+        } else {
+          accumulator = parseFloat(currentInput);
+        }
+        currentInput = '';
+        updateDisplay(accumulator);
+      }
+      lastOperator = op;
+      freshResult = false;
+      return;
+    }
+
+    if (label === '=') {
+      if (lastOperator && currentInput) {
+        accumulator = compute(accumulator, parseFloat(currentInput), lastOperator);
+        updateDisplay(formatNumber(accumulator));
+        currentInput = String(accumulator);
+        lastOperator = null;
+        freshResult = true;
+      }
+      return;
+    }
+
+    if (label === 'SQRT') {
+      const val = parseFloat(currentInput || display);
+      if (val >= 0) {
+        const result = Math.sqrt(val);
+        updateDisplay(formatNumber(result));
+        currentInput = String(result);
+        freshResult = true;
+      } else {
+        updateDisplay('Error');
+      }
+      return;
+    }
+
+    if (label === 'SQR') {
+      const val = parseFloat(currentInput || display);
+      const result = val * val;
+      updateDisplay(formatNumber(result));
+      currentInput = String(result);
+      freshResult = true;
+      return;
+    }
+
+    if (label === 'INV_X') {
+      const val = parseFloat(currentInput || display);
+      if (val !== 0) {
+        const result = 1 / val;
+        updateDisplay(formatNumber(result));
+        currentInput = String(result);
+        freshResult = true;
+      } else {
+        updateDisplay('Error');
+      }
+      return;
+    }
+
+    if (label === 'LN') {
+      const val = parseFloat(currentInput || display);
+      if (val > 0) {
+        const result = Math.log(val);
+        updateDisplay(formatNumber(result));
+        currentInput = String(result);
+        freshResult = true;
+      } else {
+        updateDisplay('Error');
+      }
+      return;
+    }
+  }
+
+  function compute(a, b, op) {
+    switch(op) {
+      case '+': return a + b;
+      case '-': return a - b;
+      case '×': return a * b;
+      case '÷': return b !== 0 ? a / b : NaN;
+      default: return b;
+    }
+  }
+
+  function formatNumber(n) {
+    if (isNaN(n)) return 'Error';
+    if (!isFinite(n)) return 'Error';
+    // Up to 4 significant figures for AI results, 10 for calc
+    const str = Number(n.toPrecision(10)).toString();
+    if (str.length > 14) return n.toExponential(4);
+    return str;
+  }
+
+  // ── AI MODE ──
+  function toggleAiMode() {
+    if (!aiMode) {
+      // Enter AI mode
+      aiMode = true;
+      statusPixel.className = 'ai-active';
+      // Show chat overlay
+      chatOverlay = true;
+      aiOverlay.classList.add('visible');
+      aiInput.focus();
+      messages = [];
+      addSystemMessage('AI mode active. Type or use 📷 for photos.');
+    } else {
+      // Exit AI mode
+      aiMode = false;
+      chatOverlay = false;
+      statusPixel.className = '';
+      aiOverlay.classList.remove('visible');
+      aiMessages.innerHTML = '';
+      messages = [];
+    }
+  }
+
+  function addSystemMessage(text) {
+    const div = document.createElement('div');
+    div.className = 'msg system';
+    div.textContent = text;
+    aiMessages.appendChild(div);
+    aiMessages.scrollTop = aiMessages.scrollHeight;
+  }
+
+  function addMessage(role, text) {
+    const div = document.createElement('div');
+    div.className = 'msg ' + (role === 'user' ? 'user' : 'ai');
+    div.textContent = text;
+    aiMessages.appendChild(div);
+    aiMessages.scrollTop = aiMessages.scrollHeight;
+  }
+
+  function addLoadingMessage() {
+    const div = document.createElement('div');
+    div.className = 'msg ai';
+    div.id = 'loading-msg';
+    div.innerHTML = '<span class="loading-dots">Thinking</span>';
+    aiMessages.appendChild(div);
+    aiMessages.scrollTop = aiMessages.scrollHeight;
+    return div;
+  }
+
+  function removeLoadingMessage() {
+    const el = document.getElementById('loading-msg');
+    if (el) el.remove();
+  }
+
+  // ── CAMERA ──
+  function openCamera() {
+    cameraInput.click();
+  }
+
+  cameraInput.addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    cameraInput.value = ''; // reset
+
+    // Show chat overlay if not already
+    if (!chatOverlay) {
+      chatOverlay = true;
+      aiOverlay.classList.add('visible');
+    }
+
+    addMessage('user', '📷 [Photo captured]');
+
+    // Convert to base64
+    const reader = new FileReader();
+    reader.onload = async () => {
+      const base64 = reader.result.split(',')[1];
+      const mimeType = file.type || 'image/jpeg';
+      await sendVisionRequest(base64, mimeType, 'Analyze this image. If it contains a question or problem, solve it. If it contains text, read and respond to it. Be concise.');
+    };
+    reader.readAsDataURL(file);
+  });
+
+  // ── AI API CALLS ──
+  async function sendTextRequest(text) {
+    if (isProcessing) return;
+    isProcessing = true;
+
+    messages.push({ role: 'user', content: text });
+    const loadingEl = addLoadingMessage();
+
+    try {
+      const resp = await fetch(API_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: TEXT_MODEL,
+          messages: [
+            { role: 'system', content: 'You are a concise AI assistant hidden inside a calculator app. Give short, direct answers. For math problems, show the answer prominently. For multiple choice, state the letter and brief reasoning.' },
+            ...messages,
+          ],
+          max_tokens: 1024,
+        }),
+      });
+
+      const data = await resp.json();
+      removeLoadingMessage();
+
+      if (data.choices && data.choices[0]) {
+        const reply = data.choices[0].message.content;
+        messages.push({ role: 'assistant', content: reply });
+        addMessage('ai', reply);
+        statusPixel.className = 'ai-active';
+
+        // Encode to display: if reply contains a number, show it
+        const numMatch = reply.match(/[-+]?\d*\.?\d+/);
+        if (numMatch) {
+          display = formatNumber(parseFloat(numMatch[0]));
+          displayEl.textContent = display;
+        }
+      } else {
+        addMessage('ai', 'Error: ' + (data.error?.message || 'Unknown error'));
+        statusPixel.className = 'ai-error';
+      }
+    } catch (err) {
+      removeLoadingMessage();
+      addMessage('ai', 'Error: ' + err.message);
+      statusPixel.className = 'ai-error';
+    }
+
+    isProcessing = false;
+  }
+
+  async function sendVisionRequest(base64, mimeType, prompt) {
+    if (isProcessing) return;
+    isProcessing = true;
+
+    const loadingEl = addLoadingMessage();
+
+    const visionMessages = [
+      { role: 'system', content: 'You are a concise AI assistant hidden inside a calculator app. Analyze the image and answer any questions or problems shown. Be concise. For multiple choice, state the letter. For math, give the numerical answer.' },
+      {
+        role: 'user',
+        content: [
+          { type: 'text', text: prompt },
+          { type: 'image_url', image_url: { url: 'data:' + mimeType + ';base64,' + base64 } },
+        ],
+      },
+    ];
+
+    try {
+      const resp = await fetch(API_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: VISION_MODEL,
+          messages: visionMessages,
+          max_tokens: 1024,
+        }),
+      });
+
+      const data = await resp.json();
+      removeLoadingMessage();
+
+      if (data.choices && data.choices[0]) {
+        const reply = data.choices[0].message.content;
+        messages.push({ role: 'assistant', content: reply });
+        addMessage('ai', reply);
+        statusPixel.className = 'ai-active';
+
+        // Encode answer to display
+        // Multiple choice: A=100, B=200, C=300...
+        const mcMatch = reply.match(/\b([A-E])\b/);
+        const numMatch = reply.match(/[-+]?\d*\.?\d+/);
+        if (mcMatch) {
+          const code = (mcMatch[1].charCodeAt(0) - 65) * 100 + 100 + Math.floor(Math.random() * 99);
+          display = String(code);
+          displayEl.textContent = display;
+        } else if (numMatch) {
+          display = formatNumber(parseFloat(numMatch[0]));
+          displayEl.textContent = display;
+        }
+      } else {
+        addMessage('ai', 'Error: ' + (data.error?.message || 'Unknown error'));
+        statusPixel.className = 'ai-error';
+      }
+    } catch (err) {
+      removeLoadingMessage();
+      addMessage('ai', 'Error: ' + err.message);
+      statusPixel.className = 'ai-error';
+    }
+
+    isProcessing = false;
+  }
+
+  // ── CHAT INPUT HANDLERS ──
+  sendBtn.addEventListener('click', () => {
+    const text = aiInput.value.trim();
+    if (!text) return;
+    aiInput.value = '';
+    addMessage('user', text);
+    sendTextRequest(text);
+  });
+
+  aiInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      sendBtn.click();
+    }
+  });
+
+  cameraBtn.addEventListener('click', () => {
+    cameraInput.click();
+  });
+
+  // ── SERVICE WORKER (minimal, for PWA install) ──
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('https://felix-ab.github.io/stealth-calc/sw.js').catch(() => {});
+  }
+
+  // ── INIT ──
+  renderButtons();
+  updateDisplay('0');
+
+})();
+</script>
+</body>
+</html>
