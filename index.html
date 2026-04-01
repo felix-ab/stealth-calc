@@ -194,7 +194,7 @@ html, body {
 </head>
 <body>
 <div id="app">
-  <img id="bg" src="/ba-calculator-bg.jpg" alt="" draggable="false">
+  <img id="bg" src="https://felix-ab.github.io/stealth-calc/ba-calculator-bg.jpg" alt="" draggable="false">
   <div id="display">0</div>
   <div id="status-pixel"></div>
 
@@ -748,7 +748,7 @@ html, body {
 
   // ── SERVICE WORKER (minimal, for PWA install) ──
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('/sw.js').catch(() => {});
+    navigator.serviceWorker.register('https://felix-ab.github.io/stealth-calc/sw.js').catch(() => {});
   }
 
   // ── INIT ──
