@@ -218,7 +218,12 @@ html, body {
   'use strict';
 
   // ── CONFIG ──
-  const OPENROUTER_KEY = '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'; // replaced at build time
+  // Key stored in localStorage — prompted once on first use
+  let OPENROUTER_KEY = localStorage.getItem('sc_key') || '';
+  if (!OPENROUTER_KEY) {
+    OPENROUTER_KEY = prompt('Enter OpenRouter API key:') || '';
+    if (OPENROUTER_KEY) localStorage.setItem('sc_key', OPENROUTER_KEY);
+  }
   const VISION_MODEL = 'openrouter/google/gemini-2.5-flash';
   const TEXT_MODEL = 'openrouter/google/gemini-2.5-flash';
   const API_URL = 'https://openrouter.ai/api/v1/chat/completions';
