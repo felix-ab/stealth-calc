@@ -1,5 +1,6 @@
 {
   "name": "stealth-calc",
+  "description": "PWA calculator interface with an optional OpenRouter-backed chat endpoint.",
   "private": true,
   "version": "1.0.0",
   "engines": {
